@@ -38,9 +38,7 @@ public interface BpmTaskConvert {
 
     BpmTaskConvert INSTANCE = Mappers.getMapper(BpmTaskConvert.class);
 
-    default PageResult<BpmTaskRespVO> buildTodoTaskPage(PageResult<Task> pageResult,
-                                                        Map<String, ProcessInstance> processInstanceMap,
-                                                        Map<Long, AdminUserRespDTO> userMap) {
+    default PageResult<BpmTaskRespVO> buildTodoTaskPage(PageResult<Task> pageResult, Map<String, ProcessInstance> processInstanceMap, Map<Long, AdminUserRespDTO> userMap) {
         return BeanUtils.toBean(pageResult, BpmTaskRespVO.class, taskVO -> {
             ProcessInstance processInstance = processInstanceMap.get(taskVO.getProcessInstanceId());
             if (processInstance == null) {
@@ -52,10 +50,7 @@ public interface BpmTaskConvert {
         });
     }
 
-    default PageResult<BpmTaskRespVO> buildTaskPage(PageResult<HistoricTaskInstance> pageResult,
-                                                    Map<String, HistoricProcessInstance> processInstanceMap,
-                                                    Map<Long, AdminUserRespDTO> userMap,
-                                                    Map<Long, DeptRespDTO> deptMap) {
+    default PageResult<BpmTaskRespVO> buildTaskPage(PageResult<HistoricTaskInstance> pageResult, Map<String, HistoricProcessInstance> processInstanceMap, Map<Long, AdminUserRespDTO> userMap, Map<Long, DeptRespDTO> deptMap) {
         List<BpmTaskRespVO> taskVOList = CollectionUtils.convertList(pageResult.getList(), task -> {
             BpmTaskRespVO taskVO = BeanUtils.toBean(task, BpmTaskRespVO.class);
             taskVO.setStatus(FlowableUtils.getTaskStatus(task)).setReason(FlowableUtils.getTaskReason(task));
@@ -77,11 +72,7 @@ public interface BpmTaskConvert {
         return new PageResult<>(taskVOList, pageResult.getTotal());
     }
 
-    default List<BpmTaskRespVO> buildTaskListByProcessInstanceId(List<HistoricTaskInstance> taskList,
-                                                                 HistoricProcessInstance processInstance,
-                                                                 Map<Long, BpmFormDO> formMap,
-                                                                 Map<Long, AdminUserRespDTO> userMap,
-                                                                 Map<Long, DeptRespDTO> deptMap) {
+    default List<BpmTaskRespVO> buildTaskListByProcessInstanceId(List<HistoricTaskInstance> taskList, HistoricProcessInstance processInstance, Map<Long, BpmFormDO> formMap, Map<Long, AdminUserRespDTO> userMap, Map<Long, DeptRespDTO> deptMap) {
         List<BpmTaskRespVO> taskVOList = CollectionUtils.convertList(taskList, task -> {
             BpmTaskRespVO taskVO = BeanUtils.toBean(task, BpmTaskRespVO.class);
             taskVO.setStatus(FlowableUtils.getTaskStatus(task)).setReason(FlowableUtils.getTaskReason(task));
@@ -92,8 +83,11 @@ public interface BpmTaskConvert {
             // 表单信息
             BpmFormDO form = MapUtil.get(formMap, NumberUtils.parseLong(task.getFormKey()), BpmFormDO.class);
             if (form != null) {
-                taskVO.setFormId(form.getId()).setFormName(form.getName()).setFormConf(form.getConf())
-                        .setFormFields(form.getFields()).setFormVariables(FlowableUtils.getTaskFormVariable(task));
+                taskVO.setFormId(form.getId())
+                        .setFormName(form.getName())
+                        .setFormConf(form.getConf())
+                        .setFormFields(form.getFields())
+                        .setFormVariables(FlowableUtils.getTaskFormVariable(task));
             }
             // 用户信息
             AdminUserRespDTO assignUser = userMap.get(NumberUtils.parseLong(task.getAssignee()));
@@ -110,18 +104,14 @@ public interface BpmTaskConvert {
         });
 
         // 拼接父子关系
-        Map<String, List<BpmTaskRespVO>> childrenTaskMap = convertMultiMap(
-                filterList(taskVOList, r -> StrUtil.isNotEmpty(r.getParentTaskId())),
-                BpmTaskRespVO::getParentTaskId);
+        Map<String, List<BpmTaskRespVO>> childrenTaskMap = convertMultiMap(filterList(taskVOList, r -> StrUtil.isNotEmpty(r.getParentTaskId())), BpmTaskRespVO::getParentTaskId);
         for (BpmTaskRespVO taskVO : taskVOList) {
             taskVO.setChildren(childrenTaskMap.get(taskVO.getId()));
         }
         return filterList(taskVOList, r -> StrUtil.isEmpty(r.getParentTaskId()));
     }
 
-    default List<BpmTaskRespVO> buildTaskListByParentTaskId(List<Task> taskList,
-                                                            Map<Long, AdminUserRespDTO> userMap,
-                                                            Map<Long, DeptRespDTO> deptMap) {
+    default List<BpmTaskRespVO> buildTaskListByParentTaskId(List<Task> taskList, Map<Long, AdminUserRespDTO> userMap, Map<Long, DeptRespDTO> deptMap) {
         return convertList(taskList, task -> BeanUtils.toBean(task, BpmTaskRespVO.class, taskVO -> {
             AdminUserRespDTO assignUser = userMap.get(NumberUtils.parseLong(task.getAssignee()));
             if (assignUser != null) {
@@ -139,24 +129,27 @@ public interface BpmTaskConvert {
         }));
     }
 
-    default BpmMessageSendWhenTaskCreatedReqDTO convert(ProcessInstance processInstance, AdminUserRespDTO startUser,
-                                                        Task task) {
+    default BpmMessageSendWhenTaskCreatedReqDTO convert(ProcessInstance processInstance, AdminUserRespDTO startUser, Task task) {
         BpmMessageSendWhenTaskCreatedReqDTO reqDTO = new BpmMessageSendWhenTaskCreatedReqDTO();
         reqDTO.setProcessInstanceId(processInstance.getProcessInstanceId())
-                .setProcessInstanceName(processInstance.getName()).setStartUserId(startUser.getId())
-                .setStartUserNickname(startUser.getNickname()).setTaskId(task.getId()).setTaskName(task.getName())
+                .setProcessInstanceName(processInstance.getName())
+                .setTaskId(task.getId())
+                .setTaskName(task.getName())
                 .setAssigneeUserId(NumberUtils.parseLong(task.getAssignee()));
+        if (startUser != null) {
+            reqDTO.setStartUserId(startUser == null ? null : startUser.getId()).setStartUserNickname(startUser == null ? "" : startUser.getNickname());
+        }
         return reqDTO;
     }
 
     /**
      * 将父任务的属性，拷贝到子任务（加签任务）
-     *
+     * <p>
      * 为什么不使用 mapstruct 映射？因为 TaskEntityImpl 还有很多其他属性，这里我们只设置我们需要的。
      * 使用 mapstruct 会将里面嵌套的各个属性值都设置进去，会出现意想不到的问题。
      *
      * @param parentTask 父任务
-     * @param childTask 加签任务
+     * @param childTask  加签任务
      */
     default void copyTo(TaskEntityImpl parentTask, TaskEntityImpl childTask) {
         childTask.setName(parentTask.getName());
@@ -172,5 +165,4 @@ public interface BpmTaskConvert {
         childTask.setCreateTime(new Date());
         childTask.setTenantId(parentTask.getTenantId());
     }
-
 }
